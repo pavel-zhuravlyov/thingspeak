@@ -1,0 +1,21 @@
+version: '2'
+
+services:
+  web:
+    build: .
+    depends_on:
+      - db
+    command: bundle exec rails s
+
+  db:
+    image: mysql
+    environment:
+      USER: 'root'
+      PASSWORD: 'root'
+    ports:
+      - 3306:3306
+    volumes:
+       - db:/var/lib/mysql
+
+volumes:
+  db:
