@@ -106,7 +106,8 @@ class ApplicationController < ActionController::Base
 
     # remove headers if necessary
     def remove_headers
-      response.headers.delete_if {|key| true} if params[:headers] == 'false'
+
+      response.delete!(:headers) if params[:headers] == 'false'
     end
 
     # allow javascript requests from any domain

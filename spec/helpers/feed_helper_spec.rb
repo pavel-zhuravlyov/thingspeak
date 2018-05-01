@@ -31,7 +31,7 @@ describe FeedHelper do
     end
 
     it "averages feed values based on a timeslice" do
-      feeds = Feed.find(:all, :order => :created_at)
+      feeds = Feed.all.order(:created_at)
       params = {:average => 10}
       helper.stub(:params).and_return(params)
 
@@ -52,7 +52,7 @@ describe FeedHelper do
     end
 
     it "median feed values based on a timeslice" do
-      feeds = Feed.find(:all, :order => :created_at)
+      feeds = Feed.all.order(:created_at)
       params = {:median => 10}
       helper.stub(:params).and_return(params)
 
@@ -73,7 +73,7 @@ describe FeedHelper do
     end
 
     it "sum feed values based on a timeslice" do
-      feeds = Feed.find(:all, :order => :created_at)
+      feeds = Feed.all.order(:created_at)
       params = {:sum => 10}
       helper.stub(:params).and_return(params)
 
@@ -94,7 +94,7 @@ describe FeedHelper do
     end
 
     it "timescale feed values based on a timeslice" do
-      feeds = Feed.find(:all, :order => :created_at)
+      feeds = Feed.all.order(:created_at)
       params = {:timescale => 10}
       helper.stub(:params).and_return(params)
 

@@ -51,7 +51,7 @@ class WindowsController < ApplicationController
     windows = channel.public_windows(true).order(:position) unless params[:channel_id].nil?
 
     if channel.recent_statuses.blank?
-      @windows = windows.delete_if { |w| w.window_type == "status"  }
+      @windows = windows.reject { |w| w.window_type == "status"  }
     else
       @windows = windows
     end
@@ -79,7 +79,7 @@ class WindowsController < ApplicationController
     else
       @windows = channel.public_windows(false)
     end
-    @windows.reject! { |window| window.window_type == "plugin" }
+    @windows = @windows.reject { |window| window.window_type == "plugin" }
     @windows.each do |window|
       # modify the object before rendering the JSON
       window.set_title_for_display!
@@ -97,7 +97,7 @@ class WindowsController < ApplicationController
     windows = channel.private_windows(true).order(:position)
 
     if channel.recent_statuses.blank?
-      @windows = windows.delete_if { |w| w.window_type == "status" }
+      @windows = windows.reject { |w| w.window_type == "status" }
     else
       @windows = windows
     end

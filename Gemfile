@@ -47,6 +47,8 @@ gem "sass-rails", "4.0.2"
 gem 'coffee-rails', " ~> 4.0"
 gem 'uglifier'
 
+gem 'byebug'
+
 group :development do
   gem 'annotate', '~> 2.6.1'
   gem 'quiet_assets'
@@ -64,7 +66,6 @@ group :test do
   gem 'json_spec'
   gem 'autotest'
   gem 'autotest-rails'
-  gem 'ZenTest'
   gem 'database_cleaner', '~> 1.2.0'
 end
 

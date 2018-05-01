@@ -47,7 +47,7 @@ class StatusController < ApplicationController
         .limit(limit)
 
       # sort properly
-      @feeds.reverse!
+      @feeds = @feeds.reverse
 
       # set output correctly
       if request.format == 'xml'

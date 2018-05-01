@@ -126,7 +126,7 @@ describe Channel do
       channels.count.should == 2
     end
     it 'should show selected channels' do
-      channels = Channel.by_array([@public_channel.id, @private_channel.id])
+      channels = Channel.find([@public_channel.id, @private_channel.id])
       channels.count.should == 2
     end
     it 'should show tagged channels' do
