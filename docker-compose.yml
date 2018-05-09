@@ -5,15 +5,17 @@ services:
     build: .
     depends_on:
       - db
+    ports:
+      - "3000:3000"
     command: bundle exec rails s
 
   db:
     image: mysql
     environment:
       USER: 'root'
-      PASSWORD: 'root'
+      MYSQL_ROOT_PASSWORD: 'root'
     ports:
-      - 3306:3306
+      - 3306
     volumes:
        - db:/var/lib/mysql
 
