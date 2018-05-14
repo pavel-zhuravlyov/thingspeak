@@ -38,6 +38,7 @@ gem 'tzinfo'
 gem 'turbolinks'
 gem 'geokit-rails'
 gem 'clockwork'
+gem 'lograge'
 
 # to use debugger
 # gem 'ruby-debug'
