@@ -5,6 +5,8 @@ Thingspeak::Application.routes.draw do
   ActiveAdmin.routes(self)
 
   # main data posts using this route
+  post 'channels/:channel_id/batch_update', :to => 'channels#bulk_post_data'
+
   match 'update', :to => 'channels#post_data', :via => ((GET_SUPPORT) ? [:get, :post] : :post)
   match 's/update', :to => 'channels#post_data', :via => [:get, :post]
 

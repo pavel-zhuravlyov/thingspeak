@@ -1,10 +1,10 @@
 class ChannelsController < ApplicationController
   include ChannelsHelper, ApiKeys
   before_filter :authenticate_via_api_key!, :only => [:index]
-  before_filter :require_user, :except => [:realtime, :realtime_update, :show, :post_data, :social_show, :social_feed, :public]
+  before_filter :require_user, :except => [:realtime, :realtime_update, :show, :post_data, :bulk_post_data, :social_show, :social_feed, :public]
   before_filter :set_channels_menu
   layout 'application', :except => [:social_show, :social_feed]
-  protect_from_forgery :except => [:realtime, :realtime_update, :post_data, :create, :destroy, :clear]
+  protect_from_forgery :except => [:realtime, :realtime_update, :post_data, :bulk_post_data, :create, :destroy, :clear]
   require 'csv'
   require 'will_paginate/array'
 
@@ -50,20 +50,20 @@ class ChannelsController < ApplicationController
     if params[:channel_ids].present?
       @header = t(:selected_channels)
       @channels = Channel.public_viewable.by_array(params[:channel_ids]).order('ranking desc, updated_at DESC').paginate :page => params[:page]
-    # get channels that match a user
+      # get channels that match a user
     elsif params[:username].present?
       @header = "#{t(:user).capitalize}: #{params[:username]}"
       searched_user = User.find_by_login(params[:username])
       @channels = searched_user.channels.public_viewable.active.order('ranking desc, updated_at DESC').paginate :page => params[:page] if searched_user.present?
-    # get channels that match a tag
+      # get channels that match a tag
     elsif params[:tag].present?
       @header = "#{t(:tag).capitalize}: #{params[:tag]}"
       @channels = Channel.public_viewable.active.order('ranking desc, updated_at DESC').with_tag(params[:tag]).paginate :page => params[:page]
-    # get channels by location
+      # get channels by location
     elsif params[:latitude].present? && params[:longitude].present? && params[:distance].present?
       @header = "#{t(:channels_near)}: [#{params[:latitude]}, #{params[:longitude]}]"
       @channels = Channel.location_search(params).paginate :page => params[:page]
-    # normal channel list
+      # normal channel list
     else
       @header = t(:featured_channels)
       @channels = Channel.public_viewable.active.order('ranking desc, updated_at DESC').paginate :page => params[:page]
@@ -423,6 +423,23 @@ class ChannelsController < ApplicationController
     end and return
   end
 
+  def bulk_post_data
+    api_key = ApiKey.find_by_api_key(get_apikey)
+
+    render 422 and return unless api_key.present? && api_key.write_flag
+    channel = api_key.channel
+
+    render 422 and return unless params[:updates].present? && params[:updates].is_a?(Array)
+    results = params[:updates].map do |feed_json|
+      create_feed(channel, feed_json)
+    end
+
+    # normal route, respond with the feed
+    respond_to do |format|
+      format.json { render :json => results.compact.count }
+    end
+  end
+
   # import view
   def import
     get_channel_data
@@ -573,48 +590,100 @@ class ChannelsController < ApplicationController
     redirect_to channel_path(channel.id, :anchor => "dataimport")
   end
 
-
   private
 
-    # only allow these params
-    def channel_params
-      params.require(:channel).permit(:name, :url, :description, :metadata, :latitude, :longitude, :field1, :field2, :field3, :field4, :field5, :field6, :field7, :field8, :elevation, :public_flag, :status, :video_id, :video_type)
-    end
+  # only allow these params
+  def channel_params
+    params.require(:channel).permit(:name, :url, :description, :metadata, :latitude, :longitude, :field1, :field2, :field3, :field4, :field5, :field6, :field7, :field8, :elevation, :public_flag, :status, :video_id, :video_type)
+  end
 
-    # determine if the date can be parsed
-    def date_parsable?(date)
-      return !is_a_number?(date)
-    end
+  # determine if the date can be parsed
+  def date_parsable?(date)
+    return !is_a_number?(date)
+  end
 
-    # determine if the csv file has headers
-    def has_headers?(csv_array)
-      headers = false
+  # determine if the csv file has headers
+  def has_headers?(csv_array)
+    headers = false
 
-      # if there are at least 2 rows
-      if (csv_array[0].present? && csv_array[1].present?)
-        row0_integers = 0
-        row1_integers = 0
+    # if there are at least 2 rows
+    if (csv_array[0].present? && csv_array[1].present?)
+      row0_integers = 0
+      row1_integers = 0
 
-        # if first row, first value contains 'create' or 'date', assume it has headers
-        if (csv_array[0][0].present? && (csv_array[0][0].downcase.include?('create') || csv_array[0][0].downcase.include?('date')))
-          headers = true
-        else
-          # count integers in row0
-          csv_array[0].each_with_index do |value, i|
-            row0_integers += 1 if is_a_number?(value)
-          end
-
-          # count integers in row1
-          csv_array[1].each_with_index do |value, i|
-            row1_integers += 1 if is_a_number?(value)
-          end
-
-          # if row1 has more integers, assume row0 is headers
-          headers = true if row1_integers > row0_integers
+      # if first row, first value contains 'create' or 'date', assume it has headers
+      if (csv_array[0][0].present? && (csv_array[0][0].downcase.include?('create') || csv_array[0][0].downcase.include?('date')))
+        headers = true
+      else
+        # count integers in row0
+        csv_array[0].each_with_index do |value, i|
+          row0_integers += 1 if is_a_number?(value)
         end
-      end
 
-      return headers
+        # count integers in row1
+        csv_array[1].each_with_index do |value, i|
+          row1_integers += 1 if is_a_number?(value)
+        end
+
+        # if row1 has more integers, assume row0 is headers
+        headers = true if row1_integers > row0_integers
+      end
     end
 
+    return headers
+  end
+
+  def create_feed(channel, feed_params)
+    tstream = feed_params[:tstream] || false
+    talkback_key = feed_params[:talkback_key] || false
+
+    return nil if RATE_LIMIT && !tstream && !talkback_key && !channel.social && channel.last_write_at.present? &&
+      Time.now < (channel.last_write_at + RATE_LIMIT_FREQUENCY.to_i.seconds)
+    return nil if (channel.social && feed_params[:latitude].blank?)
+
+    feed = Feed.new
+
+    entry_id = channel.next_entry_id
+    channel.last_entry_id = entry_id
+    feed.entry_id = entry_id
+    channel.user_agent = get_header_value('USER_AGENT')
+    channel.last_write_at = Time.now
+
+    if feed_params[:created_at].present?
+      begin
+        feed.created_at = ActiveSupport::TimeZone[Time.zone.name].parse(feed_params[:created_at])
+      rescue StandardError => e
+        Rails.logger.debug e.message
+      end
+    end
+
+    feed_params.each do |key, value|
+      begin
+        feed_params[key] = value.sub(/\\n$/, '').sub(/\\r$/, '') if value
+        feed_params[key] = get_header_value('X_REAL_IP') if value.try(:upcase) == 'IP_ADDRESS'
+      rescue StandardError => e
+        Rails.logger.debug e.message
+      end
+    end
+
+    # set feed details
+    feed.channel_id = channel.id
+    feed.field1 = feed_params[:field1] || feed_params['1'] if feed_params[:field1] || feed_params['1']
+    feed.field2 = feed_params[:field2] || feed_params['2'] if feed_params[:field2] || feed_params['2']
+    feed.field3 = feed_params[:field3] || feed_params['3'] if feed_params[:field3] || feed_params['3']
+    feed.field4 = feed_params[:field4] || feed_params['4'] if feed_params[:field4] || feed_params['4']
+    feed.field5 = feed_params[:field5] || feed_params['5'] if feed_params[:field5] || feed_params['5']
+    feed.field6 = feed_params[:field6] || feed_params['6'] if feed_params[:field6] || feed_params['6']
+    feed.field7 = feed_params[:field7] || feed_params['7'] if feed_params[:field7] || feed_params['7']
+    feed.field8 = feed_params[:field8] || feed_params['8'] if feed_params[:field8] || feed_params['8']
+    feed.status = feed_params[:status] if feed_params[:status]
+    feed.latitude = feed_params[:lat] if feed_params[:lat]
+    feed.latitude = feed_params[:latitude] if feed_params[:latitude]
+    feed.longitude = feed_params[:long] if feed_params[:long]
+    feed.longitude = feed_params[:longitude] if feed_params[:longitude]
+    feed.elevation = feed_params[:elevation] if feed_params[:elevation]
+
+    return nil unless channel.save && feed.save
+    entry_id
+  end
 end

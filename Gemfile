@@ -48,6 +48,7 @@ gem 'coffee-rails', " ~> 4.0"
 gem 'uglifier'
 
 gem 'byebug'
+gem 'authlogic'
 
 group :development do
   gem 'annotate', '~> 2.6.1'
