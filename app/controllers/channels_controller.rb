@@ -404,11 +404,11 @@ class ChannelsController < ApplicationController
 
     # if there is a talkback_key and a command that was executed
     if params[:talkback_key].present? && command.present?
-        respond_to do |format|
-          format.html { render :text => command.command_string }
-          format.json { render :json => command.to_json }
-          format.xml { render :xml => command.to_xml(Command.public_options) }
-        end and return
+      respond_to do |format|
+        format.html { render :text => command.command_string }
+        format.json { render :json => command.to_json }
+        format.xml { render :xml => command.to_xml(Command.public_options) }
+      end and return
     end
 
     # if there is a talkback_key but no command
@@ -430,13 +430,11 @@ class ChannelsController < ApplicationController
     channel = api_key.channel
 
     render 422 and return unless params[:updates].present? && params[:updates].is_a?(Array)
-    results = params[:updates].map do |feed_json|
-      create_feed(channel, feed_json)
-    end
+    created_objects_count = create_feeds(channel, params[:updates])
 
     # normal route, respond with the feed
     respond_to do |format|
-      format.json { render :json => results.compact.count }
+      format.json { render :json => created_objects_count }
     end
   end
 
@@ -633,57 +631,68 @@ class ChannelsController < ApplicationController
     return headers
   end
 
-  def create_feed(channel, feed_params)
-    tstream = feed_params[:tstream] || false
-    talkback_key = feed_params[:talkback_key] || false
-
-    return nil if RATE_LIMIT && !tstream && !talkback_key && !channel.social && channel.last_write_at.present? &&
-      Time.now < (channel.last_write_at + RATE_LIMIT_FREQUENCY.to_i.seconds)
-    return nil if (channel.social && feed_params[:latitude].blank?)
-
-    feed = Feed.new
-
+  def create_feeds(channel, feeds_jsons)
+    user_agent = get_header_value('USER_AGENT')
     entry_id = channel.next_entry_id
-    channel.last_entry_id = entry_id
-    feed.entry_id = entry_id
-    channel.user_agent = get_header_value('USER_AGENT')
-    channel.last_write_at = Time.now
 
-    if feed_params[:created_at].present?
-      begin
-        feed.created_at = ActiveSupport::TimeZone[Time.zone.name].parse(feed_params[:created_at])
-      rescue StandardError => e
-        Rails.logger.debug e.message
+    params = feeds_jsons.map do |feed_params|
+      tstream = feed_params[:tstream] || false
+      talkback_key = feed_params[:talkback_key] || false
+
+      return nil if RATE_LIMIT && !tstream && !talkback_key && !channel.social && channel.last_write_at.present? &&
+        Time.now < (channel.last_write_at + RATE_LIMIT_FREQUENCY.to_i.seconds)
+      return nil if (channel.social && feed_params[:latitude].blank?)
+
+      created_at =
+        begin
+          ActiveSupport::TimeZone[Time.zone.name].parse(feed_params[:created_at]) if feed_params[:created_at].present?
+        rescue StandardError => e
+          Rails.logger.debug e.message
+        end
+
+      feed_params.each do |key, value|
+        begin
+          feed_params[key] = value.sub(/\\n$/, '').sub(/\\r$/, '') if value
+          feed_params[key] = get_header_value('X_REAL_IP') if value.try(:upcase) == 'IP_ADDRESS'
+        rescue StandardError => e
+          Rails.logger.debug e.message
+        end
       end
+
+      # set feed details
+      feed = {}
+      feed['entry_id'] = entry_id
+      feed['created_at'] = created_at
+      feed['channel_id'] = channel.id
+      feed['field1'] = feed_params[:field1] || feed_params['1'] if feed_params[:field1] || feed_params['1']
+      feed['field2'] = feed_params[:field2] || feed_params['2'] if feed_params[:field2] || feed_params['2']
+      feed['field3'] = feed_params[:field3] || feed_params['3'] if feed_params[:field3] || feed_params['3']
+      feed['field4'] = feed_params[:field4] || feed_params['4'] if feed_params[:field4] || feed_params['4']
+      feed['field5'] = feed_params[:field5] || feed_params['5'] if feed_params[:field5] || feed_params['5']
+      feed['field6'] = feed_params[:field6] || feed_params['6'] if feed_params[:field6] || feed_params['6']
+      feed['field7'] = feed_params[:field7] || feed_params['7'] if feed_params[:field7] || feed_params['7']
+      feed['field8'] = feed_params[:field8] || feed_params['8'] if feed_params[:field8] || feed_params['8']
+      feed['status'] = feed_params[:status] if feed_params[:status]
+      feed['latitude'] = feed_params[:lat] if feed_params[:lat]
+      feed['latitude'] = feed_params[:latitude] if feed_params[:latitude]
+      feed['longitude'] = feed_params[:long] if feed_params[:long]
+      feed['longitude'] = feed_params[:longitude] if feed_params[:longitude]
+      feed['elevation'] = feed_params[:elevation] if feed_params[:elevation]
+
+      entry_id += 1
+      feed
     end
 
-    feed_params.each do |key, value|
-      begin
-        feed_params[key] = value.sub(/\\n$/, '').sub(/\\r$/, '') if value
-        feed_params[key] = get_header_value('X_REAL_IP') if value.try(:upcase) == 'IP_ADDRESS'
-      rescue StandardError => e
-        Rails.logger.debug e.message
-      end
+    feeds = ActiveRecord::Base.transaction do
+      results = Feed.create(params)
+      channel.last_write_at = Time.now
+      channel.user_agent = user_agent
+      channel.last_entry_id = entry_id
+      channel.save!
+
+      results
     end
 
-    # set feed details
-    feed.channel_id = channel.id
-    feed.field1 = feed_params[:field1] || feed_params['1'] if feed_params[:field1] || feed_params['1']
-    feed.field2 = feed_params[:field2] || feed_params['2'] if feed_params[:field2] || feed_params['2']
-    feed.field3 = feed_params[:field3] || feed_params['3'] if feed_params[:field3] || feed_params['3']
-    feed.field4 = feed_params[:field4] || feed_params['4'] if feed_params[:field4] || feed_params['4']
-    feed.field5 = feed_params[:field5] || feed_params['5'] if feed_params[:field5] || feed_params['5']
-    feed.field6 = feed_params[:field6] || feed_params['6'] if feed_params[:field6] || feed_params['6']
-    feed.field7 = feed_params[:field7] || feed_params['7'] if feed_params[:field7] || feed_params['7']
-    feed.field8 = feed_params[:field8] || feed_params['8'] if feed_params[:field8] || feed_params['8']
-    feed.status = feed_params[:status] if feed_params[:status]
-    feed.latitude = feed_params[:lat] if feed_params[:lat]
-    feed.latitude = feed_params[:latitude] if feed_params[:latitude]
-    feed.longitude = feed_params[:long] if feed_params[:long]
-    feed.longitude = feed_params[:longitude] if feed_params[:longitude]
-    feed.elevation = feed_params[:elevation] if feed_params[:elevation]
-
-    return nil unless channel.save && feed.save
-    entry_id
+    feeds.map(&:persisted?).count(true)
   end
 end
