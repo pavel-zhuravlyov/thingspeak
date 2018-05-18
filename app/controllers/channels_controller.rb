@@ -424,12 +424,15 @@ class ChannelsController < ApplicationController
   end
 
   def bulk_post_data
+    api_key = get_apikey
+    head 422 and return unless api_key.present?
+
     api_key = ApiKey.find_by_api_key(get_apikey)
 
-    render 422 and return unless api_key.present? && api_key.write_flag
+    head 422 and return unless api_key.present? && api_key.write_flag
     channel = api_key.channel
 
-    render 422 and return unless params[:updates].present? && params[:updates].is_a?(Array)
+    head 422 and return unless params[:updates].present? && params[:updates].is_a?(Array)
     created_objects_count = create_feeds(channel, params[:updates])
 
     # normal route, respond with the feed
