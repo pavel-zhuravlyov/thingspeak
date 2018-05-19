@@ -433,11 +433,11 @@ class ChannelsController < ApplicationController
     channel = api_key.channel
 
     head 422 and return unless params[:updates].present? && params[:updates].is_a?(Array)
-    created_objects_count = create_feeds(channel, params[:updates])
+    feeds = create_feeds(channel, params[:updates])
 
     # normal route, respond with the feed
     respond_to do |format|
-      format.json { render :json => created_objects_count }
+      format.json { render :json => feeds }
     end
   end
 
@@ -696,6 +696,6 @@ class ChannelsController < ApplicationController
       results
     end
 
-    feeds.map(&:persisted?).count(true)
+    feeds.select(&:persisted?)
   end
 end
